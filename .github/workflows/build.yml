@@ -7,50 +7,46 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install toolchain
+      - name: Install build tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu make flex bison bc rsync
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu make libelf-dev
 
-      - name: Download ImmortalWrt SDK
+      - name: Download kernel source and prepare config
         run: |
-          SDK_URL="https://downloads.immortalwrt.org/snapshots/targets/mediatek/filogic/immortalwrt-sdk-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.xz"
-          wget -q "$SDK_URL" -O sdk.tar.xz
-          tar -xf sdk.tar.xz
-          SDK_DIR=$(ls -d immortalwrt-sdk-*)
-          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+          wget -q 'https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.94.tar.xz' -O linux-src.tar.xz
+          tar -xf linux-src.tar.xz
+          cd linux-6.6.94
+          cp ../config-6.6.94.txt .config
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
 
-      - name: Prepare kernel headers
+      - name: Compile kernel module
         run: |
-          cd $SDK_DIR
-          echo "CONFIG_ALL_KMODS=y" >> .config
-          make defconfig
-          make tools/compile -j$(nproc)
-          make toolchain/compile -j$(nproc)
-          make target/linux/compile -j$(nproc) V=s 2>&1 | tail -20
-          KDIR=$(find build_dir -name "linux-6.6.*" -type d | head -1)
-          echo "KDIR=$PWD/$KDIR" >> $GITHUB_ENV
-          echo "Kernel dir: $KDIR"
-
-      - name: Build module
-        run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-openwrt-linux-musl-
-          make -C $KDIR M=${{ github.workspace }} modules
+          KBUILD_MODPOST_WARN=1 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+               -C linux-6.6.94 M=$GITHUB_WORKSPACE modules
 
       - name: Verify module
         run: |
           file qmi_fix_skb.ko
           modinfo qmi_fix_skb.ko
-          aarch64-linux-gnu-objdump -h qmi_fix_skb.ko | head -20
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: qmi_fix_skb
           path: qmi_fix_skb.ko
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          files: qmi_fix_skb.ko
+          overwrite: true
