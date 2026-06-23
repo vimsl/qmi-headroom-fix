@@ -47,31 +47,14 @@ static int fix_count;
 module_param_named(count, fix_count, int, 0444);
 MODULE_PARM_DESC(count, "Total __alloc_skb fix applications");
 
-/* Cached qmi_wwan_f .text range for fast caller check.
- * Resolved lazily on first kprobe hit.
+/* Simple caller check via __module_text_address.
+ * Not caching text range avoids struct module layout differences across kernel builds.
  */
-static unsigned long qmi_text_start, qmi_text_end;
-
 static inline bool caller_is_qmi(struct pt_regs *regs)
 {
 	unsigned long caller = regs->regs[30]; /* ARM64 link register */
-
-	if (qmi_text_end != 0)
-		return caller >= qmi_text_start && caller < qmi_text_end;
-
-	/* First hit: resolve qmi_wwan_f text range once */
-	{
-		struct module *mod = __module_text_address(caller);
-		if (!mod || strcmp(mod->name, TARGET_NAME))
-			return false;
-
-		qmi_text_start = (unsigned long)mod->core_layout.base;
-		qmi_text_end   = qmi_text_start + mod->core_layout.size;
-
-		pr_info("qmi_fix_skb: resolved %s .text [0x%lx - 0x%lx]\n",
-			TARGET_NAME, qmi_text_start, qmi_text_end);
-		return true;
-	}
+	struct module *mod = __module_text_address(caller);
+	return mod && !strcmp(mod->name, TARGET_NAME);
 }
 
 /*
