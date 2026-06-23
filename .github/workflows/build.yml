@@ -1,0 +1,56 @@
+name: Build qmi_fix_skb.ko
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu make flex bison bc rsync
+
+      - name: Download ImmortalWrt SDK
+        run: |
+          SDK_URL="https://downloads.immortalwrt.org/snapshots/targets/mediatek/filogic/immortalwrt-sdk-mediatek-filogic_gcc-13.3.0_musl.Linux-x86_64.tar.xz"
+          wget -q "$SDK_URL" -O sdk.tar.xz
+          tar -xf sdk.tar.xz
+          SDK_DIR=$(ls -d immortalwrt-sdk-*)
+          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+
+      - name: Prepare kernel headers
+        run: |
+          cd $SDK_DIR
+          echo "CONFIG_ALL_KMODS=y" >> .config
+          make defconfig
+          make tools/compile -j$(nproc)
+          make toolchain/compile -j$(nproc)
+          make target/linux/compile -j$(nproc) V=s 2>&1 | tail -20
+          KDIR=$(find build_dir -name "linux-6.6.*" -type d | head -1)
+          echo "KDIR=$PWD/$KDIR" >> $GITHUB_ENV
+          echo "Kernel dir: $KDIR"
+
+      - name: Build module
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-openwrt-linux-musl-
+          make -C $KDIR M=${{ github.workspace }} modules
+
+      - name: Verify module
+        run: |
+          file qmi_fix_skb.ko
+          modinfo qmi_fix_skb.ko
+          aarch64-linux-gnu-objdump -h qmi_fix_skb.ko | head -20
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qmi_fix_skb
+          path: qmi_fix_skb.ko
