@@ -73,8 +73,8 @@ KBUILD_MODPOST_WARN=1 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -C . M=$P
 
 ## Related
 
-- [luci-app-aiqos](https://github.com/vimsl/luci-app-aiqos) — H5000M AI signal optimization (cake-autorate + SINR feedback)
-- [Airpi-AP5000M-CloseWRT](https://github.com/vimsl/Airpi-AP5000M-CloseWRT) — same device firmware project (Airpi H5000M)
+- [H5000M-FM170eau](https://github.com/vimsl/H5000M-FM170eau) — the device firmware project (ImmortalWrt/CloseWRT cloud build). Embeds this module as `package/qmi_fix_skb/`; it also carries the AI QoS stack (`package/aiqos-engine/`) and the AIQoS whitepaper under `docs/`.
+- The firmware repo also keeps a **driver-source patch** route (`patches/qmi-wwan-tailroom.patch`, `Scripts/fix-qmi-skb.patch`) for the same problem. This repo (kprobe, no driver rebuild) is the single upstream for the hotfix module; keep only one route active in a given build.
 
 ## License
 
